@@ -1,0 +1,10 @@
+*.hex
+*.bak
+*.err
+*.sym
+*.esym
+*.sta
+*.tre
+*.MCP
+*.ini
+

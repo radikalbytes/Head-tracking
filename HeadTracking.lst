@@ -1,0 +1,1019 @@
+CCS PCM C Compiler, Version 4.118, 93491064               06-jul-11 07:50
+
+               Filename: H:\Disco Cosas\proxectos eagle\Head Tracking\CCS\HeadTracking.lst
+
+               ROM used: 2032 words (50%)
+                         Largest free fragment is 2048
+               RAM used: 60 (23%) at main() level
+                         108 (42%) worst case
+               Stack:    4 worst case (2 in main + 2 for interrupts)
+
+*
+0000:  MOVLW  07
+0001:  MOVWF  0A
+0002:  GOTO   74E
+0003:  NOP
+0004:  MOVWF  7F
+0005:  SWAPF  03,W
+0006:  CLRF   03
+0007:  MOVWF  25
+0008:  MOVF   7F,W
+0009:  MOVWF  24
+000A:  MOVF   0A,W
+000B:  MOVWF  2B
+000C:  CLRF   0A
+000D:  SWAPF  24,F
+000E:  MOVF   04,W
+000F:  MOVWF  26
+0010:  MOVF   20,W
+0011:  MOVWF  27
+0012:  MOVF   21,W
+0013:  MOVWF  28
+0014:  MOVF   22,W
+0015:  MOVWF  29
+0016:  MOVF   23,W
+0017:  MOVWF  2A
+0018:  BCF    03.7
+0019:  BCF    03.5
+001A:  BTFSS  0B.5
+001B:  GOTO   01E
+001C:  BTFSC  0B.2
+001D:  GOTO   02F
+001E:  MOVF   26,W
+001F:  MOVWF  04
+0020:  MOVF   27,W
+0021:  MOVWF  20
+0022:  MOVF   28,W
+0023:  MOVWF  21
+0024:  MOVF   29,W
+0025:  MOVWF  22
+0026:  MOVF   2A,W
+0027:  MOVWF  23
+0028:  MOVF   2B,W
+0029:  MOVWF  0A
+002A:  SWAPF  25,W
+002B:  MOVWF  03
+002C:  SWAPF  7F,F
+002D:  SWAPF  7F,W
+002E:  RETFIE
+002F:  BCF    0A.3
+0030:  GOTO   33D
+.................... #include <HeadTracking.h> 
+.................... #include <16F688.h> 
+.................... //////// Standard Header file for the PIC16F688 device //////////////// 
+.................... #device PIC16F688 
+.................... #list 
+....................  
+.................... #device adc=10 
+....................  
+.................... #FUSES NOWDT                    //No Watch Dog Timer 
+.................... #FUSES INTRC                 //Internal RC Osc, no CLKOUT 
+.................... #FUSES NOPROTECT                //Code not protected from reading 
+.................... #FUSES NOBROWNOUT                 //Reset when brownout detected 
+.................... #FUSES MCLR                   //Master Clear pin used for I/O 
+.................... #FUSES NOCPD                    //No EE protection 
+.................... #FUSES NOPUT                    //No Power Up Timer 
+.................... #FUSES IESO                     //Internal External Switch Over mode enabled 
+.................... #FUSES FCMEN                    //Fail-safe clock monitor enabled 
+....................  
+.................... #use delay(clock=8000000) 
+*
+0517:  MOVLW  60
+0518:  MOVWF  04
+0519:  BCF    03.7
+051A:  MOVF   00,W
+051B:  BTFSC  03.2
+051C:  GOTO   52A
+051D:  MOVLW  02
+051E:  MOVWF  21
+051F:  CLRF   20
+0520:  DECFSZ 20,F
+0521:  GOTO   520
+0522:  DECFSZ 21,F
+0523:  GOTO   51F
+0524:  MOVLW  97
+0525:  MOVWF  20
+0526:  DECFSZ 20,F
+0527:  GOTO   526
+0528:  DECFSZ 00,F
+0529:  GOTO   51D
+052A:  RETURN
+....................  
+.................... #use rs232(baud=38400,parity=N,xmit=PIN_C4,rcv=PIN_C5,bits=8,errors) 
+....................  
+.................... void get_gyro_offset(); 
+.................... void read_gyro(); 
+....................  
+.................... #define canal_AD 0 
+.................... #define ajuste_drift_h 2 
+.................... #define ajuste_drift_l -2 
+.................... #define pin_test pin_c2 
+....................  
+.................... short bit_test=true; 
+.................... long value_gyro; 
+.................... float gyro_offset; 
+.................... signed long pos_gyro=0; 
+.................... float ADC_Samples[4]; 
+.................... float integracion=0; 
+.................... float theta=0, theta_old=0; 
+.................... signed long f1,f2; 
+.................... long contador=0; 
+.................... int ciclos=6; 
+.................... #define a 0.2 
+.................... #define aa 0.001   // aa is the filter time-constant to take care of the gyro drift 
+.................... #define vref 3300. 
+.................... #define samples 1023. 
+.................... #define scale 0.00067 //0.67 mv/deg/s 
+....................  
+.................... /* 
+.................... you can integrate in discrete domain 
+....................  
+.................... Suppose the angular rate is da, it's time integral is a. k is the discrete step number. 
+....................  
+.................... a(k) = a(k-1) + T*0.5*(da(k) + da(k-1)) 
+....................  
+.................... for example, da(k) is current angular rate reading. da(k-1) is previoud angular rate reading. a(k-1) is the previous step's integration value(rotation angle) 
+....................  
+.................... T is sampling rate. if the sensor outputs in every 1 mili second, T becomes 0.001 
+....................  
+.................... you can use this formula when k>0 The initial value, a(0), must be given. 
+.................... */ 
+....................  
+....................  //RUTINAS DE INTERRUPCION 
+.................... #INT_TIMER0 
+.................... void interrupcion(void) 
+.................... { 
+*
+033D:  CLRF   76
+033E:  CLRF   75
+....................   int8 i; 
+....................  // signed long deriva; 
+....................   long adc_tmp=0; 
+....................   set_timer0(99);                //carga TMR0 
+033F:  MOVLW  63
+0340:  MOVWF  01
+....................  
+....................     //   ciclos--; 
+....................     //   if (ciclos==0){ 
+....................     //   if (bit_test) output_high(pin_test); 
+....................     //   else output_low(pin_test); 
+....................     //   bit_test=~bit_test; 
+....................     output_high(pin_test); 
+0341:  BSF    03.5
+0342:  BCF    07.2
+0343:  BCF    03.5
+0344:  BSF    07.2
+....................     set_adc_channel(canal_AD);  
+0345:  MOVLW  00
+0346:  MOVWF  21
+0347:  MOVF   1F,W
+0348:  ANDLW  C3
+0349:  IORWF  21,W
+034A:  MOVWF  1F
+....................     delay_us(15); 
+034B:  MOVLW  09
+034C:  MOVWF  20
+034D:  DECFSZ 20,F
+034E:  GOTO   34D
+034F:  GOTO   350
+....................     adc_tmp=read_adc(); 
+0350:  BSF    1F.1
+0351:  BTFSC  1F.1
+0352:  GOTO   351
+0353:  BSF    03.5
+0354:  MOVF   1E,W
+0355:  MOVWF  75
+0356:  BCF    03.5
+0357:  MOVF   1E,W
+0358:  MOVWF  76
+....................     delay_us(15); 
+0359:  MOVLW  09
+035A:  MOVWF  20
+035B:  DECFSZ 20,F
+035C:  GOTO   35B
+035D:  GOTO   35E
+....................     i=4; 
+035E:  MOVLW  04
+035F:  MOVWF  74
+....................     while (i>0){ 
+0360:  MOVF   74,F
+0361:  BTFSC  03.2
+0362:  GOTO   39C
+....................       ADC_Samples[i-1]=ADC_Samples[i-2]; 
+0363:  MOVLW  01
+0364:  SUBWF  74,W
+0365:  MOVWF  20
+0366:  RLF    20,F
+0367:  RLF    20,F
+0368:  MOVLW  FC
+0369:  ANDWF  20,F
+036A:  MOVF   20,W
+036B:  ADDLW  37
+036C:  MOVWF  21
+036D:  CLRF   23
+036E:  BTFSC  03.0
+036F:  INCF   23,F
+0370:  MOVF   21,W
+0371:  MOVWF  77
+0372:  MOVF   23,W
+0373:  MOVWF  78
+0374:  MOVLW  02
+0375:  SUBWF  74,W
+0376:  MOVWF  20
+0377:  RLF    20,F
+0378:  RLF    20,F
+0379:  MOVLW  FC
+037A:  ANDWF  20,F
+037B:  MOVF   20,W
+037C:  ADDLW  37
+037D:  MOVWF  04
+037E:  BCF    03.7
+037F:  MOVF   00,W
+0380:  MOVWF  20
+0381:  INCF   04,F
+0382:  MOVF   00,W
+0383:  MOVWF  21
+0384:  INCF   04,F
+0385:  MOVF   00,W
+0386:  MOVWF  22
+0387:  INCF   04,F
+0388:  MOVF   00,W
+0389:  MOVWF  23
+038A:  MOVF   77,W
+038B:  MOVWF  04
+038C:  BCF    03.7
+038D:  BTFSC  78.0
+038E:  BSF    03.7
+038F:  MOVF   20,W
+0390:  MOVWF  00
+0391:  INCF   04,F
+0392:  MOVF   21,W
+0393:  MOVWF  00
+0394:  INCF   04,F
+0395:  MOVF   22,W
+0396:  MOVWF  00
+0397:  INCF   04,F
+0398:  MOVF   23,W
+0399:  MOVWF  00
+....................       i--; 
+039A:  DECF   74,F
+....................     } 
+039B:  GOTO   360
+....................     ADC_samples[0]=(adc_tmp*vref/samples); 
+039C:  MOVF   76,W
+039D:  MOVWF  78
+039E:  MOVF   75,W
+039F:  MOVWF  77
+03A0:  CALL   031
+03A1:  MOVF   23,W
+03A2:  MOVWF  7E
+03A3:  MOVF   22,W
+03A4:  MOVWF  7D
+03A5:  MOVF   21,W
+03A6:  MOVWF  7C
+03A7:  MOVF   20,W
+03A8:  MOVWF  7B
+03A9:  BSF    03.5
+03AA:  CLRF   23
+03AB:  MOVLW  40
+03AC:  MOVWF  22
+03AD:  MOVLW  4E
+03AE:  MOVWF  21
+03AF:  MOVLW  8A
+03B0:  MOVWF  20
+03B1:  BCF    03.5
+03B2:  CALL   04E
+03B3:  MOVF   20,W
+03B4:  MOVWF  77
+03B5:  MOVF   21,W
+03B6:  MOVWF  78
+03B7:  MOVF   22,W
+03B8:  MOVWF  79
+03B9:  MOVF   23,W
+03BA:  MOVWF  7A
+03BB:  MOVWF  7E
+03BC:  MOVF   22,W
+03BD:  MOVWF  7D
+03BE:  MOVF   21,W
+03BF:  MOVWF  7C
+03C0:  MOVF   20,W
+03C1:  MOVWF  7B
+03C2:  BSF    03.5
+03C3:  CLRF   23
+03C4:  MOVLW  C0
+03C5:  MOVWF  22
+03C6:  MOVLW  7F
+03C7:  MOVWF  21
+03C8:  MOVLW  88
+03C9:  MOVWF  20
+03CA:  BCF    03.5
+03CB:  CALL   0EE
+03CC:  MOVF   23,W
+03CD:  MOVWF  3A
+03CE:  MOVF   22,W
+03CF:  MOVWF  39
+03D0:  MOVF   21,W
+03D1:  MOVWF  38
+03D2:  MOVF   20,W
+03D3:  MOVWF  37
+....................     ADC_samples[0]-=gyro_offset; 
+03D4:  BSF    03.1
+03D5:  MOVF   3A,W
+03D6:  MOVWF  7E
+03D7:  MOVF   39,W
+03D8:  MOVWF  7D
+03D9:  MOVF   38,W
+03DA:  MOVWF  7C
+03DB:  MOVF   37,W
+03DC:  MOVWF  7B
+03DD:  MOVF   34,W
+03DE:  BSF    03.5
+03DF:  MOVWF  23
+03E0:  BCF    03.5
+03E1:  MOVF   33,W
+03E2:  BSF    03.5
+03E3:  MOVWF  22
+03E4:  BCF    03.5
+03E5:  MOVF   32,W
+03E6:  BSF    03.5
+03E7:  MOVWF  21
+03E8:  BCF    03.5
+03E9:  MOVF   31,W
+03EA:  BSF    03.5
+03EB:  MOVWF  20
+03EC:  BCF    03.5
+03ED:  CALL   1D6
+03EE:  MOVF   23,W
+03EF:  MOVWF  3A
+03F0:  MOVF   22,W
+03F1:  MOVWF  39
+03F2:  MOVF   21,W
+03F3:  MOVWF  38
+03F4:  MOVF   20,W
+03F5:  MOVWF  37
+....................     //Integracion Runge-kutta 
+....................     theta = theta_old + (((ADC_samples[3]+(2*ADC_samples[2])+(2*ADC_samples[1])+ADC_samples[0])/6)*0.01/0.67); 
+03F6:  CLRF   7E
+03F7:  CLRF   7D
+03F8:  CLRF   7C
+03F9:  MOVLW  80
+03FA:  MOVWF  7B
+03FB:  MOVF   42,W
+03FC:  BSF    03.5
+03FD:  MOVWF  23
+03FE:  BCF    03.5
+03FF:  MOVF   41,W
+0400:  BSF    03.5
+0401:  MOVWF  22
+0402:  BCF    03.5
+0403:  MOVF   40,W
+0404:  BSF    03.5
+0405:  MOVWF  21
+0406:  BCF    03.5
+0407:  MOVF   3F,W
+0408:  BSF    03.5
+0409:  MOVWF  20
+040A:  BCF    03.5
+040B:  CALL   04E
+040C:  BCF    03.1
+040D:  MOVF   46,W
+040E:  MOVWF  7E
+040F:  MOVF   45,W
+0410:  MOVWF  7D
+0411:  MOVF   44,W
+0412:  MOVWF  7C
+0413:  MOVF   43,W
+0414:  MOVWF  7B
+0415:  MOVF   23,W
+0416:  BSF    03.5
+0417:  MOVWF  23
+0418:  BCF    03.5
+0419:  MOVF   22,W
+041A:  BSF    03.5
+041B:  MOVWF  22
+041C:  BCF    03.5
+041D:  MOVF   21,W
+041E:  BSF    03.5
+041F:  MOVWF  21
+0420:  BCF    03.5
+0421:  MOVF   20,W
+0422:  BSF    03.5
+0423:  MOVWF  20
+0424:  BCF    03.5
+0425:  CALL   1D6
+0426:  MOVF   20,W
+0427:  MOVWF  77
+0428:  MOVF   21,W
+0429:  MOVWF  78
+042A:  MOVF   22,W
+042B:  MOVWF  79
+042C:  MOVF   23,W
+042D:  MOVWF  7A
+042E:  CLRF   7E
+042F:  CLRF   7D
+0430:  CLRF   7C
+0431:  MOVLW  80
+0432:  MOVWF  7B
+0433:  MOVF   3E,W
+0434:  BSF    03.5
+0435:  MOVWF  23
+0436:  BCF    03.5
+0437:  MOVF   3D,W
+0438:  BSF    03.5
+0439:  MOVWF  22
+043A:  BCF    03.5
+043B:  MOVF   3C,W
+043C:  BSF    03.5
+043D:  MOVWF  21
+043E:  BCF    03.5
+043F:  MOVF   3B,W
+0440:  BSF    03.5
+0441:  MOVWF  20
+0442:  BCF    03.5
+0443:  CALL   04E
+0444:  BCF    03.1
+0445:  MOVF   7A,W
+0446:  MOVWF  7E
+0447:  MOVF   79,W
+0448:  MOVWF  7D
+0449:  MOVF   78,W
+044A:  MOVWF  7C
+044B:  MOVF   77,W
+044C:  MOVWF  7B
+044D:  MOVF   23,W
+044E:  BSF    03.5
+044F:  MOVWF  23
+0450:  BCF    03.5
+0451:  MOVF   22,W
+0452:  BSF    03.5
+0453:  MOVWF  22
+0454:  BCF    03.5
+0455:  MOVF   21,W
+0456:  BSF    03.5
+0457:  MOVWF  21
+0458:  BCF    03.5
+0459:  MOVF   20,W
+045A:  BSF    03.5
+045B:  MOVWF  20
+045C:  BCF    03.5
+045D:  CALL   1D6
+045E:  MOVF   20,W
+045F:  MOVWF  77
+0460:  MOVF   21,W
+0461:  MOVWF  78
+0462:  MOVF   22,W
+0463:  MOVWF  79
+0464:  MOVF   23,W
+0465:  MOVWF  7A
+0466:  BCF    03.1
+0467:  MOVF   23,W
+0468:  MOVWF  7E
+0469:  MOVF   22,W
+046A:  MOVWF  7D
+046B:  MOVF   21,W
+046C:  MOVWF  7C
+046D:  MOVF   20,W
+046E:  MOVWF  7B
+046F:  MOVF   3A,W
+0470:  BSF    03.5
+0471:  MOVWF  23
+0472:  BCF    03.5
+0473:  MOVF   39,W
+0474:  BSF    03.5
+0475:  MOVWF  22
+0476:  BCF    03.5
+0477:  MOVF   38,W
+0478:  BSF    03.5
+0479:  MOVWF  21
+047A:  BCF    03.5
+047B:  MOVF   37,W
+047C:  BSF    03.5
+047D:  MOVWF  20
+047E:  BCF    03.5
+047F:  CALL   1D6
+0480:  MOVF   20,W
+0481:  MOVWF  77
+0482:  MOVF   21,W
+0483:  MOVWF  78
+0484:  MOVF   22,W
+0485:  MOVWF  79
+0486:  MOVF   23,W
+0487:  MOVWF  7A
+0488:  MOVWF  7E
+0489:  MOVF   22,W
+048A:  MOVWF  7D
+048B:  MOVF   21,W
+048C:  MOVWF  7C
+048D:  MOVF   20,W
+048E:  MOVWF  7B
+048F:  BSF    03.5
+0490:  CLRF   23
+0491:  CLRF   22
+0492:  MOVLW  40
+0493:  MOVWF  21
+0494:  MOVLW  81
+0495:  MOVWF  20
+0496:  BCF    03.5
+0497:  CALL   0EE
+0498:  MOVF   20,W
+0499:  MOVWF  77
+049A:  MOVF   21,W
+049B:  MOVWF  78
+049C:  MOVF   22,W
+049D:  MOVWF  79
+049E:  MOVF   23,W
+049F:  MOVWF  7A
+04A0:  MOVWF  7E
+04A1:  MOVF   22,W
+04A2:  MOVWF  7D
+04A3:  MOVF   21,W
+04A4:  MOVWF  7C
+04A5:  MOVF   20,W
+04A6:  MOVWF  7B
+04A7:  MOVLW  0A
+04A8:  BSF    03.5
+04A9:  MOVWF  23
+04AA:  MOVLW  D7
+04AB:  MOVWF  22
+04AC:  MOVLW  23
+04AD:  MOVWF  21
+04AE:  MOVLW  78
+04AF:  MOVWF  20
+04B0:  BCF    03.5
+04B1:  CALL   04E
+04B2:  MOVF   20,W
+04B3:  MOVWF  77
+04B4:  MOVF   21,W
+04B5:  MOVWF  78
+04B6:  MOVF   22,W
+04B7:  MOVWF  79
+04B8:  MOVF   23,W
+04B9:  MOVWF  7A
+04BA:  MOVWF  7E
+04BB:  MOVF   22,W
+04BC:  MOVWF  7D
+04BD:  MOVF   21,W
+04BE:  MOVWF  7C
+04BF:  MOVF   20,W
+04C0:  MOVWF  7B
+04C1:  MOVLW  1F
+04C2:  BSF    03.5
+04C3:  MOVWF  23
+04C4:  MOVLW  85
+04C5:  MOVWF  22
+04C6:  MOVLW  2B
+04C7:  MOVWF  21
+04C8:  MOVLW  7E
+04C9:  MOVWF  20
+04CA:  BCF    03.5
+04CB:  CALL   0EE
+04CC:  BCF    03.1
+04CD:  MOVF   52,W
+04CE:  MOVWF  7E
+04CF:  MOVF   51,W
+04D0:  MOVWF  7D
+04D1:  MOVF   50,W
+04D2:  MOVWF  7C
+04D3:  MOVF   4F,W
+04D4:  MOVWF  7B
+04D5:  MOVF   23,W
+04D6:  BSF    03.5
+04D7:  MOVWF  23
+04D8:  BCF    03.5
+04D9:  MOVF   22,W
+04DA:  BSF    03.5
+04DB:  MOVWF  22
+04DC:  BCF    03.5
+04DD:  MOVF   21,W
+04DE:  BSF    03.5
+04DF:  MOVWF  21
+04E0:  BCF    03.5
+04E1:  MOVF   20,W
+04E2:  BSF    03.5
+04E3:  MOVWF  20
+04E4:  BCF    03.5
+04E5:  CALL   1D6
+04E6:  MOVF   23,W
+04E7:  MOVWF  4E
+04E8:  MOVF   22,W
+04E9:  MOVWF  4D
+04EA:  MOVF   21,W
+04EB:  MOVWF  4C
+04EC:  MOVF   20,W
+04ED:  MOVWF  4B
+....................     theta_old = theta; 
+04EE:  MOVF   4E,W
+04EF:  MOVWF  52
+04F0:  MOVF   4D,W
+04F1:  MOVWF  51
+04F2:  MOVF   4C,W
+04F3:  MOVWF  50
+04F4:  MOVF   4B,W
+04F5:  MOVWF  4F
+....................     output_low(pin_test); 
+04F6:  BSF    03.5
+04F7:  BCF    07.2
+04F8:  BCF    03.5
+04F9:  BCF    07.2
+....................     contador++; 
+04FA:  INCF   57,F
+04FB:  BTFSC  03.2
+04FC:  INCF   58,F
+....................     
+....................     
+....................  
+....................   } 
+....................   
+....................  
+....................  
+04FD:  BCF    0B.2
+04FE:  BCF    0A.3
+04FF:  GOTO   01E
+.................... void get_gyro_offset()          //Calcula gyro offset 
+.................... /* 
+....................       // filter the sensor output 
+....................       Gyro_value = SensorValue(GyroSensor); 
+....................       wait1Msec(100); 
+....................        GyroBias = (1-a)*GyroBias + a*Gyro_value; */ 
+.................... {  
+*
+056E:  MOVLW  5A
+056F:  MOVWF  5B
+....................     int8 i; 
+....................     int iNumLec = 90; 
+....................     long iTemp; 
+....................     long Gyro_value; 
+....................  
+....................     set_adc_channel(canal_AD);   //Leer Gyro  
+0570:  MOVLW  00
+0571:  MOVWF  21
+0572:  MOVF   1F,W
+0573:  ANDLW  C3
+0574:  IORWF  21,W
+0575:  MOVWF  1F
+....................     delay_us(15);               //Settle time 
+0576:  MOVLW  09
+0577:  MOVWF  20
+0578:  DECFSZ 20,F
+0579:  GOTO   578
+057A:  GOTO   57B
+....................     iTemp = 0; 
+057B:  CLRF   5D
+057C:  CLRF   5C
+....................     for (i=0;i<iNumLec;i++)    //Captura 100 lecturas 
+057D:  CLRF   5A
+057E:  MOVF   5B,W
+057F:  SUBWF  5A,W
+0580:  BTFSC  03.0
+0581:  GOTO   596
+....................     { 
+....................       gyro_value=read_adc(); 
+0582:  BSF    1F.1
+0583:  BTFSC  1F.1
+0584:  GOTO   583
+0585:  BSF    03.5
+0586:  MOVF   1E,W
+0587:  BCF    03.5
+0588:  MOVWF  5E
+0589:  MOVF   1E,W
+058A:  MOVWF  5F
+....................       iTemp = itemp + gyro_value;  
+058B:  MOVF   5E,W
+058C:  ADDWF  5C,F
+058D:  MOVF   5F,W
+058E:  BTFSC  03.0
+058F:  INCFSZ 5F,W
+0590:  ADDWF  5D,F
+....................       delay_ms(10); 
+0591:  MOVLW  0A
+0592:  MOVWF  60
+0593:  CALL   517
+....................   //    printf("itemp:%Ld \n\r",gyro_value); 
+....................     } 
+0594:  INCF   5A,F
+0595:  GOTO   57E
+....................     iTemp = iTemp / iNumLec;  //Media de 100 lecturas 
+0596:  MOVF   5D,W
+0597:  MOVWF  61
+0598:  MOVF   5C,W
+0599:  MOVWF  60
+059A:  CLRF   63
+059B:  MOVF   5B,W
+059C:  MOVWF  62
+*
+05C1:  MOVF   22,W
+05C2:  MOVWF  5D
+05C3:  MOVF   21,W
+05C4:  MOVWF  5C
+05C5:  CLRF   2C
+05C6:  BTFSC  0B.7
+05C7:  BSF    2C.7
+05C8:  BCF    0B.7
+....................  //   printf("Offset:%Ld \n\r",itemp); 
+....................     gyro_offset = (iTemp*vref/samples); 
+05C9:  MOVF   5D,W
+05CA:  MOVWF  78
+05CB:  MOVF   5C,W
+05CC:  MOVWF  77
+05CD:  CALL   031
+05CE:  BTFSC  2C.7
+05CF:  BSF    0B.7
+05D0:  CLRF   2C
+05D1:  BTFSC  0B.7
+05D2:  BSF    2C.7
+05D3:  BCF    0B.7
+05D4:  MOVF   23,W
+05D5:  MOVWF  7E
+05D6:  MOVF   22,W
+05D7:  MOVWF  7D
+05D8:  MOVF   21,W
+05D9:  MOVWF  7C
+05DA:  MOVF   20,W
+05DB:  MOVWF  7B
+05DC:  BSF    03.5
+05DD:  CLRF   23
+05DE:  MOVLW  40
+05DF:  MOVWF  22
+05E0:  MOVLW  4E
+05E1:  MOVWF  21
+05E2:  MOVLW  8A
+05E3:  MOVWF  20
+05E4:  BCF    03.5
+05E5:  CALL   04E
+05E6:  BTFSC  2C.7
+05E7:  BSF    0B.7
+05E8:  MOVF   20,W
+05E9:  MOVWF  60
+05EA:  MOVF   21,W
+05EB:  MOVWF  61
+05EC:  MOVF   22,W
+05ED:  MOVWF  62
+05EE:  MOVF   23,W
+05EF:  MOVWF  63
+05F0:  CLRF   2C
+05F1:  BTFSC  0B.7
+05F2:  BSF    2C.7
+05F3:  BCF    0B.7
+05F4:  MOVF   23,W
+05F5:  MOVWF  7E
+05F6:  MOVF   22,W
+05F7:  MOVWF  7D
+05F8:  MOVF   21,W
+05F9:  MOVWF  7C
+05FA:  MOVF   20,W
+05FB:  MOVWF  7B
+05FC:  BSF    03.5
+05FD:  CLRF   23
+05FE:  MOVLW  C0
+05FF:  MOVWF  22
+0600:  MOVLW  7F
+0601:  MOVWF  21
+0602:  MOVLW  88
+0603:  MOVWF  20
+0604:  BCF    03.5
+0605:  CALL   0EE
+0606:  BTFSC  2C.7
+0607:  BSF    0B.7
+0608:  MOVF   23,W
+0609:  MOVWF  34
+060A:  MOVF   22,W
+060B:  MOVWF  33
+060C:  MOVF   21,W
+060D:  MOVWF  32
+060E:  MOVF   20,W
+060F:  MOVWF  31
+....................  //   printf("Offset:%f2 \n\r",gyro_offset); 
+....................  //   gyro_offset = (float)(gyro_offset*0.00322); 
+....................  //   printf("Offset:%f3 \n\r",gyro_offset); 
+....................      
+.................... }  
+0610:  BCF    0A.3
+0611:  GOTO   7AD (RETURN)
+....................  
+.................... void read_gyro(){ 
+....................   int8 i; 
+....................  // signed long deriva; 
+....................   long adc_tmp=0; 
+....................   set_adc_channel(canal_AD);  
+....................   delay_us(15); 
+....................   adc_tmp=read_adc(); 
+....................   delay_us(15); 
+....................   i=4; 
+....................   while (i>0){ 
+....................    ADC_Samples[i-1]=ADC_Samples[i-2]; 
+....................    i--; 
+....................   } 
+....................   ADC_samples[0]=(adc_tmp*vref/samples); 
+.................... //  printf("ADC%F2 \n\r",ADC_Samples[0]); 
+....................  // printf("Offset:%f2 \n\r",gyro_offset); 
+....................   ADC_samples[0]-=gyro_offset; 
+....................      //Integracion Runge-kutta 
+....................      theta = theta_old + (((ADC_samples[3]+(2*ADC_samples[2])+(2*ADC_samples[1])+ADC_samples[0])/6)*0.05/0.67); 
+....................      theta_old = theta; 
+....................       
+....................       printf("%F3 \n",theta); 
+.................... //   printf("ADC_samples[1]:%F3 \n\r",ADC_Samples[1]); 
+.................... //   printf("ADC_samples[2]:%F3 \n\r",ADC_Samples[2]); 
+.................... //   printf("ADC_samples[3]:%F3 \n\r",ADC_Samples[3]); 
+....................  
+....................  
+....................       
+.................... } 
+....................  
+.................... void main() 
+.................... { 
+*
+074E:  CLRF   04
+074F:  BCF    03.7
+0750:  MOVLW  1F
+0751:  ANDWF  03,F
+0752:  MOVLW  71
+0753:  BSF    03.5
+0754:  MOVWF  0F
+0755:  MOVF   0F,W
+0756:  BCF    03.5
+0757:  CLRF   2D
+0758:  BCF    11.3
+0759:  MOVLW  0C
+075A:  MOVWF  13
+075B:  MOVLW  A6
+075C:  MOVWF  16
+075D:  MOVLW  90
+075E:  MOVWF  17
+075F:  BSF    2E.0
+0760:  CLRF   36
+0761:  CLRF   35
+0762:  CLRF   4A
+0763:  CLRF   49
+0764:  CLRF   48
+0765:  CLRF   47
+0766:  CLRF   4E
+0767:  CLRF   4D
+0768:  CLRF   4C
+0769:  CLRF   4B
+076A:  CLRF   52
+076B:  CLRF   51
+076C:  CLRF   50
+076D:  CLRF   4F
+076E:  CLRF   58
+076F:  CLRF   57
+0770:  MOVLW  06
+0771:  MOVWF  59
+0772:  BCF    1F.6
+0773:  MOVLW  00
+0774:  BSF    03.5
+0775:  MOVWF  11
+0776:  BCF    03.5
+0777:  CLRF   1A
+0778:  MOVLW  07
+0779:  MOVWF  19
+....................    setup_oscillator(OSC_8MHZ); 
+077A:  MOVLW  71
+077B:  BSF    03.5
+077C:  MOVWF  0F
+077D:  MOVF   0F,W
+....................    setup_adc_ports(sAN0|VSS_VDD); 
+077E:  BCF    03.5
+077F:  BCF    1F.6
+0780:  MOVLW  01
+0781:  BSF    03.5
+0782:  MOVWF  11
+....................    setup_adc(ADC_CLOCK_INTERNAL); 
+0783:  BSF    1F.4
+0784:  BSF    1F.5
+0785:  BCF    1F.6
+0786:  BCF    03.5
+0787:  BSF    1F.7
+0788:  BSF    1F.0
+....................    setup_comparator(NC_NC_NC_NC); 
+0789:  CLRF   1A
+078A:  MOVLW  07
+078B:  MOVWF  19
+078C:  BSF    03.5
+078D:  MOVF   05,W
+078E:  MOVWF  05
+078F:  MOVLW  06
+0790:  BCF    03.5
+0791:  MOVWF  20
+0792:  DECFSZ 20,F
+0793:  GOTO   792
+0794:  NOP
+0795:  MOVF   19,W
+0796:  BCF    0C.3
+....................    setup_vref(FALSE); 
+0797:  BSF    03.5
+0798:  CLRF   19
+....................    setup_timer_0(T0_INTERNAL|T0_DIV_128|T0_8_BIT); 
+0799:  MOVF   01,W
+079A:  ANDLW  C0
+079B:  IORLW  06
+079C:  MOVWF  01
+....................    delay_ms(1000); 
+079D:  MOVLW  04
+079E:  BCF    03.5
+079F:  MOVWF  5A
+07A0:  MOVLW  FA
+07A1:  MOVWF  60
+07A2:  CALL   517
+07A3:  DECFSZ 5A,F
+07A4:  GOTO   7A0
+....................    printf("Radikaldesig.com Gyro Control Head Tracking\r\n"); 
+07A5:  MOVLW  00
+07A6:  BSF    03.5
+07A7:  MOVWF  1B
+07A8:  MOVLW  05
+07A9:  MOVWF  18
+07AA:  BCF    03.5
+07AB:  GOTO   52B
+....................    get_gyro_offset();  
+07AC:  GOTO   56E
+....................    delay_ms(100); 
+07AD:  MOVLW  64
+07AE:  MOVWF  60
+07AF:  CALL   517
+....................    enable_interrupts(global); 
+07B0:  MOVLW  C0
+07B1:  IORWF  0B,F
+....................    ENABLE_INTERRUPTS(INT_TIMER0); 
+07B2:  BSF    0B.5
+....................    set_timer0(99);                //carga TMR0 
+07B3:  MOVLW  63
+07B4:  MOVWF  01
+....................    ADC_Samples[0]=0; 
+07B5:  CLRF   3A
+07B6:  CLRF   39
+07B7:  CLRF   38
+07B8:  CLRF   37
+....................    ADC_Samples[1]=0; 
+07B9:  CLRF   3E
+07BA:  CLRF   3D
+07BB:  CLRF   3C
+07BC:  CLRF   3B
+....................    ADC_Samples[2]=0; 
+07BD:  CLRF   42
+07BE:  CLRF   41
+07BF:  CLRF   40
+07C0:  CLRF   3F
+....................    ADC_Samples[3]=0; 
+07C1:  CLRF   46
+07C2:  CLRF   45
+07C3:  CLRF   44
+07C4:  CLRF   43
+....................     theta_old = 0; 
+07C5:  CLRF   52
+07C6:  CLRF   51
+07C7:  CLRF   50
+07C8:  CLRF   4F
+....................     f1=0; 
+07C9:  CLRF   54
+07CA:  CLRF   53
+....................  
+....................    while(contador<15000){ 
+07CB:  MOVF   58,W
+07CC:  SUBLW  3A
+07CD:  BTFSS  03.0
+07CE:  GOTO   7EF
+07CF:  BTFSS  03.2
+07D0:  GOTO   7D5
+07D1:  MOVF   57,W
+07D2:  SUBLW  97
+07D3:  BTFSS  03.0
+07D4:  GOTO   7EF
+....................   // printf("Offset:%Ld \n\r",gyro_offset); 
+....................    printf("%F3 \n",theta); 
+07D5:  MOVLW  89
+07D6:  MOVWF  04
+07D7:  MOVF   4E,W
+07D8:  MOVWF  5D
+07D9:  MOVF   4D,W
+07DA:  MOVWF  5C
+07DB:  MOVF   4C,W
+07DC:  MOVWF  5B
+07DD:  MOVF   4B,W
+07DE:  MOVWF  5A
+07DF:  MOVLW  02
+07E0:  MOVWF  5E
+07E1:  GOTO   661
+07E2:  MOVLW  33
+07E3:  BTFSS  0C.1
+07E4:  GOTO   7E3
+07E5:  MOVWF  15
+07E6:  MOVLW  20
+07E7:  BTFSS  0C.1
+07E8:  GOTO   7E7
+07E9:  MOVWF  15
+07EA:  MOVLW  0A
+07EB:  BTFSS  0C.1
+07EC:  GOTO   7EB
+07ED:  MOVWF  15
+....................    //delay_ms(10); 
+....................  
+....................    } 
+07EE:  GOTO   7CB
+.................... } 
+....................  
+....................  
+07EF:  SLEEP
+
+Configuration Fuses:
+   Word  1: 3CF5   INTRC NOWDT NOPUT MCLR NOPROTECT NOCPD NOBROWNOUT IESO FCMEN
